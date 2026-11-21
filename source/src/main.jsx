@@ -9,6 +9,8 @@ import {createState,OPEN,CLOSE,at,dayOf,secOf,clock,bookingDays,USER,live,cancel
 import {createScenario,SCENARIOS,DEMO_SEATS} from './scenarios.js';
 import './style.css';
 import './compact.css';
+import './school.css';
+import {SchoolHome,SchoolProfile} from './SchoolPages.jsx';
 const KEY='c200-reservation-simulator-v2',DEMO_KEY='c200-guided-demo-v1';
 function read(key){try{const s=JSON.parse(localStorage.getItem(key));return s?.version===2&&Number.isFinite(s.now)&&Array.isArray(s.reservations)&&Array.isArray(s.events)?s:null;}catch{return null;}}
 function defaultRequest(state){const date=bookingDays(state.now)[0],start=date===dayOf(state.now)?Math.max(14*3600,Math.ceil(secOf(state.now)/900)*900):OPEN;return {date,start:clock(start),end:clock(Math.min(CLOSE,start+3*3600))};}
@@ -29,18 +31,21 @@ function App(){
  function exitDemo(){setDemo(null);setRequest(defaultRequest(base));setPage('seats');setPlannerKey(k=>k+1);setRenewal(null);setError('');setNotice('已回到原预约');}
  function openPlanner(input=request,id=null){setPlannerRequest(input);setRenewal(id);setPlannerKey(k=>k+1);setPage('planner');}
  const mine=state.reservations.filter(r=>r.userId===USER).sort((a,b)=>b.createdAt-a.createdAt);
- return <div className="compact-app">
-  <header className="compact-header"><button className="compact-brand" onClick={()=>setPage('seats')} aria-label="SeatLink 找座"><Icon name="book" size={23}/><strong>SeatLink</strong></button><div className="header-right"><button className="demo-data-badge" onClick={()=>setModal('data')} aria-label="查看模拟数据">模拟</button><IconButton icon="play" label="场景演示" onClick={()=>setModal('scenes')}/><IconButton icon="settings" label="模拟控制" onClick={()=>setModal('controls')}/></div></header>
+ return <div className="compact-app school-app">
+  <header className="school-header"><IconButton icon="back" label="返回首页" onClick={()=>setPage('home')}/><span>交圖座位预约</span><button className="school-simulation" onClick={()=>setModal('data')} aria-label="查看模拟数据">模拟</button></header>
+  <div className="school-subheader"><span className="subheader-spacer"/><span>{({home:'座位预约',seats:'C200-中区（M）',planner:'智能找座与续座',bookings:'预约管理',profile:'个人中心'})[page]}</span><div><IconButton icon="play" label="场景演示" onClick={()=>setModal('scenes')}/><IconButton icon="settings" label="模拟控制" onClick={()=>setModal('controls')}/></div></div>
   {notice&&<div className="compact-toast" role="status"><Icon name="check" size={17}/>{notice}</div>}
   <main className="compact-main">
    {storageError&&<p role="alert" className="compact-error">浏览器无法保存，刷新后操作会丢失。</p>}
    {error&&<div role="alert" className="compact-error">{error}<IconButton icon="close" label="关闭提示" onClick={()=>setError('')}/></div>}
    {demo&&<div className="compact-demo-bar"><span><Icon name="play" size={15}/>{SCENARIOS[demo.scenario]}</span><div><button onClick={()=>selectDemo(demo.scenario)} aria-label="重演本场景"><Icon name="reset" size={16}/></button><button onClick={exitDemo}>退出演示<Icon name="close" size={15}/></button></div></div>}
+   {page==='home'&&<SchoolHome state={state} onSeats={()=>setPage('seats')} onPlanner={()=>openPlanner()}/>}
+   {page==='profile'&&<SchoolProfile state={state} onControls={()=>setModal('controls')} onScenes={()=>setModal('scenes')} onData={()=>setModal('data')}/>}
    {page==='seats'&&<CompactSeatBrowser state={state} request={request} onRequest={setRequest} onBook={book} onPlanner={openPlanner}/>}
    {page==='planner'&&<PlannerPanel key={plannerKey} state={state} onBook={act} initialSearch={plannerRequest} initialReservationId={renewal} onShowReservations={()=>setPage('bookings')} demo={!!demo} onSelectDemo={selectDemo} renderMap={()=><SeatMap seats={seats} selected={null} date={bookingDays(state.now)[0]} state={state} query="" onPick={()=>{}} highlights={DEMO_SEATS}/>}/>}
    {page==='bookings'&&<section className="compact-bookings"><div className="result-toolbar"><h1>我的预约</h1><span className="result-count">{mine.length}</span></div>{mine.length===0?<div className="compact-empty"><Icon name="booking" size={38}/><h2>还没有预约</h2><button onClick={()=>setPage('seats')}>找座</button></div>:mine.map(r=><article className="compact-booking" key={r.id}><div className="booking-top"><strong>{r.seatId}</strong><span className={`booking-status ${live(r)?'live':''}`}>{statusNames[r.status]}</span></div><div className="booking-time"><Icon name="clock" size={18}/><b>{clock(secOf(r.start))}–{clock(secOf(r.end))}</b><span>{r.date.slice(5).replace('-','/')}</span></div>{r.status==='reserved'&&<p className="booking-deadline">{clock(secOf(r.start+1800))} 前入馆</p>}{r.note&&<p className="booking-note"><Icon name="note" size={14}/>{r.note}</p>}<div className="booking-buttons">{(live(r)||r.status==='completed')&&<button onClick={()=>openPlanner(request,r.id)}><Icon name="route" size={16}/>续座</button>}{live(r)&&<button onClick={()=>act(s=>cancel(s,r.id),'已取消')}><Icon name="close" size={16}/>取消</button>}</div></article>)}</section>}
   </main>
-  <nav className="compact-nav" aria-label="主要导航">{[['seats','seat','找座'],['planner','route','拼座'],['bookings','booking','预约']].map(([id,icon,label])=><button key={id} aria-current={page===id?'page':undefined} onClick={()=>id==='planner'?openPlanner():setPage(id)}><Icon name={icon} size={21}/><span>{label}</span></button>)}</nav>
+  <nav className="compact-nav" aria-label="主要导航">{[['bookings','booking','预约管理'],['home','home','首页'],['planner','route','智能找座'],['profile','user','个人中心']].map(([id,icon,label])=><button key={id} aria-current={page===id||(id==='home'&&page==='seats')?'page':undefined} onClick={()=>id==='planner'?openPlanner():setPage(id)}><Icon name={icon} size={23}/><span>{label}</span></button>)}</nav>
   <dialog ref={modalRef} className="compact-dialog utility-dialog" aria-label={modal==='data'?'模拟数据':modal==='scenes'?'场景演示':'模拟控制'} onCancel={()=>setModal(null)} onClick={e=>{if(e.target===modalRef.current)setModal(null);}}><div className="dialog-heading"><h2>{modal==='data'?'模拟数据':modal==='scenes'?'场景演示':'模拟控制'}</h2><IconButton icon="close" label="关闭面板" onClick={()=>setModal(null)}/></div>
    {modal==='data'&&<div className="simulation-data"><p>以下均为合成数据，未现场核实。</p><ul><li><Icon name="display"/>显示屏 / HDMI</li><li><Icon name="daylight"/>自然光 / 直晒时段</li><li><Icon name="partition"/>隔板 / 通道 / 空调</li><li><Icon name="sparse"/>附近 6 座人数快照</li></ul><p>人数快照：11/19 12:40。超过 10 分钟或目标开始晚于当前 15 分钟，记为未知。</p><p>预约为合成记录；布局参考 C200，SIM 编号待核对。</p></div>}
    {modal==='scenes'&&<div className="scene-grid">{Object.entries(SCENARIOS).map(([id,label])=><button key={id} onClick={()=>selectDemo(id)}><Icon name={id==='single'?'seat':id==='renewal'?'plus':id==='gap'?'clock':'route'}/>{label}</button>)}</div>}

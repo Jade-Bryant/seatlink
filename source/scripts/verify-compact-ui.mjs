@@ -9,14 +9,15 @@ async function newPage(viewport={width:1440,height:1000}){
  const page=await browser.newPage({viewport});
  page.on('pageerror',e=>errors.push(e.message));
  page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
- await page.goto(url);return page;
+ await page.goto(url);await expect(page.locator('.school-header')).toContainText('交圖座位预约');await expect(page.getByRole('button',{name:'座位地图',exact:true})).toHaveAttribute('aria-pressed','true');await page.getByRole('button',{name:'时间列表',exact:true}).click();return page;
 }
-const nav=(page,name)=>page.getByRole('navigation',{name:'主要导航'}).getByRole('button',{name,exact:true});
+const nav=(page,name)=>page.getByRole('navigation',{name:'主要导航'}).getByRole('button',{name:({'预约':'预约管理','拼座':'智能找座','首页':'首页','个人中心':'个人中心'})[name]||name,exact:true});
+async function goSeats(page){await nav(page,'首页').click();await page.getByRole('button',{name:/^C200-中区（M）/}).click();await page.getByRole('button',{name:'时间列表',exact:true}).click();}
 const pref=page=>page.getByRole('button',{name:/座位偏好，/});
 try{
  const page=await newPage();
  await expect(page.locator('.seat-result')).toHaveCount(17);
- await page.screenshot({path:'.qa/desktop.png'});
+ await page.getByRole('button',{name:'座位地图',exact:true}).click();await page.screenshot({path:'.qa/school-map-desktop.png'});await page.getByRole('button',{name:'时间列表',exact:true}).click();
  await pref(page).click();
  await expect(page.getByRole('button',{name:'有显示屏',exact:true})).toBeFocused();
  await page.getByRole('button',{name:'有显示屏',exact:true}).click();
@@ -79,7 +80,7 @@ try{
  await expect(page.locator('.booking-status')).toHaveText('已签到');
  await page.getByRole('button',{name:'模拟控制',exact:true}).click();await page.getByRole('button',{name:'离馆',exact:true}).click();await page.getByRole('button',{name:'关闭面板',exact:true}).click();
  await expect(page.locator('.booking-status')).toHaveText('已签退');
- await nav(page,'找座').click();await expect(page.locator('.seat-result')).toHaveCount(17);
+ await goSeats(page);await expect(page.locator('.seat-result')).toHaveCount(17);
  await page.getByRole('button',{name:'模拟控制',exact:true}).click();await page.getByRole('button',{name:'22:30',exact:true}).click();await page.getByRole('button',{name:'关闭面板',exact:true}).click();
  await expect(page.getByRole('combobox',{name:'学习日期'})).toHaveValue('2026-11-20');
  await page.close();
@@ -87,18 +88,27 @@ try{
   const mobile=await newPage({width,height:width===844?390:812});
   await mobile.emulateMedia({reducedMotion:'reduce'});
   expect(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  await mobile.getByRole('button',{name:'座位地图',exact:true}).click();
+  if(width===375)await mobile.screenshot({path:'.qa/school-map-mobile.png'});
   await pref(mobile).click();await mobile.getByRole('button',{name:'自然光好',exact:true}).click();
   const popup=await mobile.getByRole('dialog',{name:'座位偏好',exact:true}).boundingBox();
   expect(popup.x).toBeGreaterThanOrEqual(0);expect(popup.x+popup.width).toBeLessThanOrEqual(width);
   if(width===375)await mobile.screenshot({path:'.qa/mobile-preferences.png'});
-  await mobile.getByRole('button',{name:'完成',exact:true}).click();await mobile.locator('.seat-result').first().click();
+  await mobile.getByRole('button',{name:'完成',exact:true}).click();await mobile.getByRole('button',{name:'时间列表',exact:true}).click();await mobile.locator('.seat-result').first().click();
   await expect(mobile.getByRole('button',{name:/^预约 \d/})).toBeEnabled();
   if(width===375)await mobile.screenshot({path:'.qa/mobile-detail.png'});
   await mobile.getByRole('button',{name:'关闭座位详情'}).click();
   await nav(mobile,'拼座').click();
   expect(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   await mobile.getByRole('button',{name:'帮我找座',exact:true}).click();await expect(mobile.getByTestId('plan-card').first()).toBeVisible();
+  await nav(mobile,'首页').click();await expect(mobile.getByRole('img',{name:'上海交通大学图书馆'})).toBeVisible();
+  await expect(mobile.getByRole('button',{name:/^B200-东区/})).toBeDisabled();
+  await mobile.waitForLoadState('networkidle');
+  if(width===375)await mobile.screenshot({path:'.qa/school-home-mobile.png'});
+  await mobile.getByRole('button',{name:/^C200-中区（M）/}).click();await expect(mobile.locator('.seat-map')).toBeVisible();
+  await nav(mobile,'个人中心').click();await expect(mobile.getByText('演示读者',{exact:true})).toBeVisible();
+  await mobile.locator('.school-profile-row').filter({hasText:'模拟数据'}).click();await expect(mobile.getByRole('dialog',{name:'模拟数据',exact:true})).toBeVisible();
   await mobile.close();
  }
- expect(errors).toEqual([]);console.log('PASS: desktop, 375/390/844px, preferences, map/list, strict validation, booking, persistence, 4 demos, renewal, gate, date rollover.');
+ expect(errors).toEqual([]);console.log('PASS: school theme, map default, home/area navigation, profile, desktop, 375/390/844px, preferences, map/list, strict validation, booking, persistence, 4 demos, renewal, gate, date rollover.');
 }finally{await browser.close();}
