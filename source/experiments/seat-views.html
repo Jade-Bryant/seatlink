@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="C200 座位时间可视化草稿：时间总览、按时间看地图、换座路线。仅使用合成数据，不提供预约。">
+  <link rel="icon" href="data:,">
+  <title>C200 · 空闲时间一眼看清</title>
+  <style>/* INLINE_CSS */</style>
+</head>
+<body>
+<header class="masthead"><a class="brand" href="#timeline"><span class="brand-mark" aria-hidden="true">C</span> C200 <span class="brand-sub">座位时间实验室</span></a><span class="draft">UI 草稿 · 只看不预约</span></header>
+<main>
+  <section class="intro"><div><p class="eyebrow">主馆二楼 / C200 中区</p><h1>空闲时间，一眼看清。</h1><p class="lede">不用挨个点座位。用同一批数据，比较三种找座方式。</p></div><div class="data-note"><b>演示数据</b><span>83 个座位 · 固定演示日 11 月 20 日<br>布局参考学校截图，空闲时段为合成数据。</span></div></section>
+  <form class="controls" id="controls">
+    <div class="time-group"><span class="control-heading">我想学习</span><div class="time-inputs"><label>开始<input type="time" id="start" value="14:00" min="08:00" max="22:30" required></label><span class="time-separator">至</span><label>结束<input type="time" id="end" value="17:00" min="08:00" max="22:30" required></label></div></div>
+    <label class="dataset-label">换一批演示数据<select id="dataset"><option value="fragmented">空闲时段零散</option><option value="gap">换座间有空窗</option><option value="full">有连续三小时空位</option><option value="renewal">先坐，再看续座</option></select></label>
+    <button type="submit" class="primary">查看这个时段</button>
+    <button type="button" class="subtle" id="reset">恢复 14:00–17:00</button>
+    <p class="form-error" role="alert" id="form-error" hidden></p>
+  </form>
+  <div class="data-event" id="data-event"></div>
+  <section class="stats" id="stats" aria-label="目标时段的空闲情况" aria-live="polite"></section>
+  <nav class="tabs" role="tablist" aria-label="三种可视化草稿">
+    <button role="tab" id="tab-timeline" aria-controls="view" aria-selected="true" data-view="timeline">时间总览<span>同时比较所有座位</span></button>
+    <button role="tab" id="tab-map" aria-controls="view" aria-selected="false" tabindex="-1" data-view="map">按时间看地图<span>位置和时段一起看</span></button>
+    <button role="tab" id="tab-routes" aria-controls="view" aria-selected="false" tabindex="-1" data-view="routes">换座路线<span>把碎片时间拼起来</span></button>
+  </nav>
+  <section id="view" role="tabpanel" tabindex="0" aria-labelledby="tab-timeline"></section>
+  <footer><b>草稿说明</b><span>不连接学校系统、不保存预约。SIM 为临时编号；仅 LC2-M-025、LC2-M-051 的编号与位置已核对。空闲不等于现场无人。</span></footer>
+</main>
+<script>/* INLINE_JS */</script>
+</body>
+</html>

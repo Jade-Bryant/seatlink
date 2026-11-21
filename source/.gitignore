@@ -1,0 +1,8 @@
+node_modules/
+dist/
+test-results/
+.deploy/
+.qa/
+references/
+.publish/
+.DS_Store

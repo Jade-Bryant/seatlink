@@ -1,10 +1,31 @@
-# SeatLink 图书馆座位演示
+# SeatLink · 简洁偏好找座
 
-图书馆座位预约、拼接与续座的交互原型。
+此版本位于 **compact-preferences-ui** 独立分支；未合并 main，也未修改当前 GitHub Pages。
 
-- [预约演示](https://xinranxu0830-boop.github.io/seatlink/)
-- [三种时间可视化草稿](https://xinranxu0830-boop.github.io/seatlink/seat-views.html)
+- 根目录：已构建的静态网页，可用任意静态服务器预览。
+- `source/`：React + Vite 源码、测试和模拟数据说明。
+- 新界面：时间栏 + ⋯ 偏好图标菜单、列表／地图、预约详情、拼座与续座。
+- [模拟情况](source/docs/simulated-preferences.md)：显示屏、光线、隔板、空调、通道、附近人数均为合成数据。
+- 环境偏好只用于单座推荐；拼座与续座保留原时间算法。
 
-预约记录均为合成演示数据，未连接学校预约系统、门禁或监控。每位访问者的预约操作仅保存在自己的浏览器中，互不同步。座位布局参考 C200 图纸与截图，SIM 编号为临时编号。
+## 开发
 
-本仓库存放部署后的静态网页文件，由 GitHub Pages 从 main 分支根目录提供服务。
+```sh
+git clone --branch compact-preferences-ui --single-branch https://github.com/xinranxu0830-boop/seatlink.git
+cd seatlink/source
+npm ci
+npm run dev -- --port 5175
+```
+
+打开 http://127.0.0.1:5175/ 。
+
+```sh
+npm test
+npm run build
+# 开发服务运行时，用本机 Google Chrome 检查交互：
+npm run test:ui
+```
+
+详见 [源码 README](source/README.md)。后续修改源码后在 source/ 运行构建，产物在 source/dist/；更新本分支根目录产物即可。不要向 main 推送或改变 Pages 发布分支，除非另行确认要替换线上版本。
+
+当前在线页面仍来自 main，这个 GitHub 分支地址本身不是网页预览链接。
