@@ -17,6 +17,10 @@ export const timeValue = value => {const p=value.split(':').map(Number);return p
 export const live = r => r.status==='reserved'||r.status==='checked_in';
 export const overlap = (a,b,c,d) => a<d&&c<b;
 export const bookingDays = now => secOf(now)>=CLOSE ? [nextDay(dayOf(now))] : [dayOf(now)];
+export const bookingDatesFor = state => state.replayDate ? [state.replayDate] : bookingDays(state.now);
+export const seatsFor = state => state.seats ?? seats;
+export const readerFor = state => state.userId ?? USER;
+export const minBookingMinutes = state => state.minReservationMinutes ?? RULES.minDuration/60;
 export const effectiveEnd = r => Math.max(r.start, Math.min(r.end,r.releasedAt??r.end));
 export function intervals(state,seatId,date) {
  return state.reservations.filter(r=>r.seatId===seatId&&r.date===date&&effectiveEnd(r)>r.start)
@@ -40,7 +44,7 @@ export function advance(state,target) {
   // Seed visitors have explicit simulated arrival events, not a timeout exemption.
   if(r.autoArriveAt!=null&&r.autoArriveAt<=target&&r.autoArriveAt<r.start+RULES.grace){r.checkedInAt=r.autoArriveAt;r.status='checked_in';}
   if(r.checkedInAt==null&&target>=r.start+RULES.grace){r.status='expired';r.releasedAt=r.start+RULES.grace;result=addLog(result,`${r.seatId}：预约开始 30 分钟未签到，自动释放。`,r.releasedAt);}
-  else if(target>=r.end){r.status='completed';r.releasedAt=r.end;result=addLog(result,`${r.seatId}：${r.userId===USER?'你的':'其他读者的'}预约时段结束。`,r.end);}
+  else if(target>=r.end){r.status='completed';r.releasedAt=r.end;result=addLog(result,`${r.seatId}：${r.userId===readerFor(state)?'你的':'其他读者的'}预约时段结束。`,r.end);}
  }
  if(state.inside&&state.now<at(dayOf(state.now),CLOSE)&&target>=at(dayOf(state.now),CLOSE)){result.inside=false;result=addLog(result,'闭馆：模拟馆内状态已重置。',at(dayOf(state.now),CLOSE));}
  result.events.sort((a,b)=>b.at-a.at);
@@ -48,45 +52,49 @@ export function advance(state,target) {
 }
 export function reservationError(state,input) {
  const {seatId,date,start,end}=input;
- if(!seats.some(s=>s.id===seatId))return '请选择有效座位。';
- if(!bookingDays(state.now).includes(date))return '该日期尚未开放预约：每天 22:30 开放次日预约。';
+ if(!seatsFor(state).some(s=>s.id===seatId))return '请选择有效座位。';
+ if(!bookingDatesFor(state).includes(date))return '该日期尚未开放预约：每天 22:30 开放次日预约。';
  if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return '结束时间必须晚于开始时间。';
  if(start<at(date,OPEN)||end>at(date,CLOSE)||dayOf(start)!==date)return '预约须在当日 08:00 至 22:30 之间。';
  if(start<state.now)return '不能预约已经过去的时段，请调整开始时间。';
- if(end-start<RULES.minDuration||end-start>RULES.maxDuration)return '每次预约时长须为 60–960 分钟，并在闭馆前结束。';
- if(state.reservations.some(r=>r.userId===USER&&live(r)&&overlap(start,end,r.start,r.end)))return '该时段与你已有的预约重叠；可以同时保留多条预约，但时间不能重叠。';
+ const minimum=minBookingMinutes(state);
+ if(end-start<minimum*60||end-start>RULES.maxDuration)return `每次预约时长须为 ${minimum}–960 分钟，并在闭馆前结束。`;
+ if(state.reservations.some(r=>r.userId===readerFor(state)&&live(r)&&overlap(start,end,r.start,r.end)))return '该时段与你已有的预约重叠；可以同时保留多条预约，但时间不能重叠。';
  if(intervals(state,seatId,date).some(([a,b])=>overlap(start,end,a,b)))return '该时段与已有预约冲突，请选择完整的空闲时段。';
  return '';
 }
 export function reserve(state,input) {
  const error=reservationError(state,input);if(error)throw new Error(error);
  const checked=state.inside&&dayOf(state.now)===input.date;
- const r={...input,id:`mine-${state.now}-${state.reservations.length}`,userId:USER,status:checked?'checked_in':'reserved',checkedInAt:checked?state.now:null,createdAt:state.now,releasedAt:null};
+ const r={...input,id:`mine-${state.now}-${state.reservations.length}`,userId:readerFor(state),status:checked?'checked_in':'reserved',checkedInAt:checked?state.now:null,createdAt:state.now,releasedAt:null};
  return addLog({...state,reservations:[...state.reservations,r]},`${r.seatId}：预约成功，${clock(secOf(r.start))} 至 ${clock(secOf(r.end))}。`);
 }
 // Validate against a private staged state. The caller receives a new state only
 // if ALL segments succeed; a stale conflict never leaves a partial reservation.
-export function reserveBatch(state,segments,{planId}={}) {
+export function reserveBatch(state,segments,{planId,renewal=false}={}) {
  if(!Array.isArray(segments)||!segments.length)throw new Error('预约方案不能为空。');
  const ordered=segments.map(s=>({...s})).sort((a,b)=>a.start-b.start);
  if(new Set(ordered.map(s=>s.date)).size!==1)throw new Error('一套方案必须在同一天内。');
+ if(minBookingMinutes(state)<RULES.minDuration/60&&ordered.slice(renewal?0:1).some(s=>s.end-s.start<RULES.minDuration)){
+  throw new Error('后续预约段至少 60 分钟。');
+ }
  const id=planId||`plan-${state.now}-${state.reservations.length}`;
  let staged=state;
  for(const segment of ordered)staged=reserve(staged,{...segment,planId:id});
  return addLog(staged,`整套方案预约成功：${ordered.length} 段，所有时段已确认。`);
 }
 export function cancel(state,id) {
- const r=state.reservations.find(r=>r.id===id&&r.userId===USER&&live(r));if(!r)throw new Error('该预约已结束，无法取消。');
+ const r=state.reservations.find(r=>r.id===id&&r.userId===readerFor(state)&&live(r));if(!r)throw new Error('该预约已结束，无法取消。');
  return addLog({...state,reservations:state.reservations.map(x=>x.id===id?{...x,status:'cancelled',releasedAt:state.now}:x)},`${r.seatId}：已取消，剩余时段即时释放。`);
 }
 export function scan(state,direction) {
  if(direction==='in') {
   if(state.inside)throw new Error('当前已在馆内。');
   if(secOf(state.now)<OPEN||secOf(state.now)>=CLOSE)throw new Error('当前为闭馆时间，无法模拟入馆。');
-  return addLog({...state,inside:true,reservations:state.reservations.map(r=>r.userId===USER&&live(r)&&r.date===dayOf(state.now)?{...r,status:'checked_in',checkedInAt:state.now}:r)},'入馆扫码成功；当日有效预约已签到。');
+  return addLog({...state,inside:true,reservations:state.reservations.map(r=>r.userId===readerFor(state)&&live(r)&&r.date===dayOf(state.now)?{...r,status:'checked_in',checkedInAt:state.now}:r)},'入馆扫码成功；当日有效预约已签到。');
  }
  if(!state.inside)throw new Error('当前不在馆内。');
- return addLog({...state,inside:false,reservations:state.reservations.map(r=>r.userId===USER&&live(r)&&r.date===dayOf(state.now)?{...r,status:'signed_out',releasedAt:state.now}:r)},'离馆扫码成功；当日有效预约已签退，剩余时段即时释放。');
+ return addLog({...state,inside:false,reservations:state.reservations.map(r=>r.userId===readerFor(state)&&live(r)&&r.date===dayOf(state.now)?{...r,status:'signed_out',releasedAt:state.now}:r)},'离馆扫码成功；当日有效预约已签退，剩余时段即时释放。');
 }
 export function createState(empty=false) {
  let state={version:2,now:INITIAL,inside:false,reservations:[],events:[],nextEventId:0};
