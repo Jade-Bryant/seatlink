@@ -1,0 +1,185 @@
+import React, { useEffect, useState } from 'react';
+import { clock, dayOf, secOf } from './engine.js';
+import './replay.css';
+
+const timeOf = (seconds, precise = false) => clock(secOf(seconds), precise);
+const interval = (start, end) => `${timeOf(start)}–${timeOf(end)}`;
+const percent = (value, digits = 3) => `${(100 * value).toFixed(digits)}%`;
+const minutes = new Intl.NumberFormat('zh-CN', {maximumFractionDigits: 1});
+const workloadLabels = { observed: '原始预约', pressure: '增加需求' };
+const isCount = value => Number.isInteger(value) && value >= 0;
+
+function validExample(example) {
+  if (example === null) return true;
+  return [example?.start, example?.end, example?.release].every(Number.isFinite) &&
+    Array.isArray(example.groups) && example.groups.every(group =>
+      typeof group?.id === 'string' && Array.isArray(group.decisions) && group.decisions.every(decision =>
+        Number.isFinite(decision?.time) && Array.isArray(decision.slots) && decision.slots.every(slot =>
+          typeof slot?.seat === 'string' && [slot.start, slot.end].every(Number.isFinite))));
+}
+
+function validSummary(data) {
+  return data?.schemaVersion === 1 && typeof data.date === 'string' &&
+    [data.seatCount, data.open, data.close, data.binSeconds].every(Number.isFinite) &&
+    data.seatCount > 0 && data.close > data.open && data.binSeconds > 0 &&
+    Array.isArray(data.workloads) && data.workloads.length === 2 &&
+    data.workloads.every(workload => typeof workload?.id === 'string' &&
+      [workload.totalRequests, workload.effectiveRequests, workload.addedCount].every(isCount) &&
+      Array.isArray(workload.groups) && workload.groups.length === 4 && validExample(workload.example) &&
+      workload.groups.every(group => typeof group?.id === 'string' && typeof group.label === 'string' &&
+        [group.occupiedSeconds, group.utilization, group.complete].every(Number.isFinite) &&
+        Array.isArray(group.bins) && group.bins.length === Math.ceil((data.close - data.open) / data.binSeconds) &&
+        group.bins.every(Number.isFinite)));
+}
+
+function LoadReplay({ loading, error, onLoad }) {
+  return <section className="c200-replay">
+    <h1>C200 东区预约回放</h1>
+    {loading ? <p role="status">正在读取本地回放结果。</p> : <>
+      <p>在项目的 <code>source</code> 目录运行 <code>npm run experiment:c200</code>，或导入已生成的 <code>c200-replay.json</code>。</p>
+      <label className="replay-import">导入回放汇总
+        <input type="file" accept=".json,application/json" onChange={onLoad}/>
+      </label>
+    </>}
+    {error && <p className="compact-error" role="alert">{error}</p>}
+  </section>;
+}
+
+function TimeProfile({ summary, workload }) {
+  const [groupIndex, setGroupIndex] = useState(0);
+  const [bin, setBin] = useState(0);
+  const group = workload.groups[groupIndex];
+  const binStart = summary.open + summary.binSeconds * bin;
+  const binEnd = Math.min(binStart + summary.binSeconds, summary.close);
+  const limit = summary.seatCount * (binEnd - binStart);
+  return <section className="replay-section">
+    <div className="replay-section-heading">
+      <h2>分时预约利用率</h2>
+      <label>查看策略
+        <select value={groupIndex} onChange={event => setGroupIndex(Number(event.target.value))}>
+          {workload.groups.map((item, index) => <option key={item.id} value={index}>{item.label}</option>)}
+        </select>
+      </label>
+    </div>
+    <div className="replay-bars" aria-hidden="true">
+      {group.bins.map((seconds, index) => {
+        const start = summary.open + index * summary.binSeconds;
+        const capacity = summary.seatCount * Math.min(summary.binSeconds, summary.close - start);
+        return <span key={index} className={index === bin ? 'selected' : undefined} style={{height: percent(seconds / capacity)}}/>;
+      })}
+    </div>
+    <label className="replay-range">
+      回放时段
+      <input type="range" min="0" max={group.bins.length - 1} value={bin}
+        aria-valuetext={interval(binStart, binEnd)} onChange={event => setBin(Number(event.target.value))}/>
+    </label>
+    <div className="replay-bin" aria-live="polite">
+      <strong>{interval(binStart, binEnd)}</strong>
+      {workload.groups.map(item => <span key={item.id}>{item.label} {percent(item.bins[bin] / limit, 1)}</span>)}
+    </div>
+  </section>;
+}
+
+function Example({ example, groups, date }) {
+  const [step, setStep] = useState(0);
+  const decisions = example.groups.flatMap(group => group.decisions);
+  const timeline = [...new Set([...decisions.map(decision => decision.time), example.release])].sort((a, b) => a - b);
+  const now = timeline[step];
+  return <section className="replay-section">
+    <h2>同一请求的分配过程</h2>
+    <p>目标 {interval(example.start, example.end)}，座位用字母标记。</p>
+    <label className="replay-range">
+      决策时刻
+      <input type="range" min="0" max={timeline.length - 1} value={step}
+        aria-valuetext={timeOf(now, true)} onChange={event => setStep(Number(event.target.value))}/>
+    </label>
+    <output>{dayOf(now) !== date && '前一日 '}{timeOf(now, true)}{now === example.release && ' · 记录结束'}</output>
+    <ul className="replay-decisions">
+      {example.groups.map(group => {
+        const made = group.decisions.filter(decision => decision.time <= now);
+        return <li key={group.id}>
+          <strong>{groups.find(item => item.id === group.id)?.label}</strong>
+          {made.length === 0 ? <span>此时未分配</span> : <ul>
+            {made.map((decision, index) => <li key={index}>
+              {decision.action === 'initial' ? '首次预约' : '续座'} · {decision.slots.map(slot =>
+                `${slot.seat} 座 ${interval(slot.start, slot.end)}`).join(' / ')}
+            </li>)}
+          </ul>}
+        </li>;
+      })}
+    </ul>
+  </section>;
+}
+
+export default function ReplayPanel() {
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(import.meta.env.DEV);
+  const [error, setError] = useState('');
+  const [workloadIndex, setWorkloadIndex] = useState(0);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const response = await fetch('/__seatlink/c200-replay', { signal: controller.signal });
+        if (response.status === 204) return;
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (!validSummary(data)) throw new Error();
+        setSummary(data);
+      } catch {
+        if (!controller.signal.aborted) setError('本地汇总无法读取。可以重新生成或直接导入文件。');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    load();
+    return () => controller.abort();
+  }, []);
+
+  async function loadFile(event) {
+    const input = event.currentTarget;
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!validSummary(data)) throw new Error();
+      setSummary(data);
+      setError('');
+    } catch {
+      setError('文件格式不匹配，请选择实验生成的回放汇总 JSON。');
+    } finally {
+      input.value = '';
+    }
+  }
+
+  if (!summary) return <LoadReplay loading={loading} error={error} onLoad={loadFile}/>;
+  const workload = summary.workloads[workloadIndex];
+  return <section className="c200-replay" aria-labelledby="c200-replay-title">
+    <h1 id="c200-replay-title">C200 东区预约回放</h1>
+    <p>{summary.date} · {summary.seatCount} 个记录内座位 · {interval(summary.open, summary.close)}</p>
+    <div className="replay-tabs" role="group" aria-label="选择回放负载">
+      {summary.workloads.map((item, index) => <button key={item.id}
+        aria-pressed={index === workloadIndex} onClick={() => setWorkloadIndex(index)}>
+        {workloadLabels[item.id] ?? item.id}{item.addedCount > 0 ? ` ＋${item.addedCount} 条` : ''}
+      </button>)}
+    </div>
+    <section className="replay-section">
+      <h2>四组回放结果</h2>
+      <p>共 {workload.totalRequests} 条请求，其中 {workload.effectiveRequests} 条有正有效时长。</p>
+      <table className="replay-results">
+        <thead><tr><th scope="col">策略</th><th scope="col">预约利用率</th><th scope="col">座位分钟</th><th scope="col">完整覆盖</th></tr></thead>
+        <tbody>{workload.groups.map(group => <tr key={group.id}>
+          <th scope="row">{group.label}</th>
+          <td>{percent(group.utilization)}</td>
+          <td>{minutes.format(group.occupiedSeconds / 60)}</td>
+          <td>{group.complete}/{workload.effectiveRequests}</td>
+        </tr>)}</tbody>
+      </table>
+      <p className="replay-caption">利用率按预约记录的真实结束时间裁剪后计算。</p>
+    </section>
+    <TimeProfile summary={summary} workload={workload}/>
+    {workload.example && <Example key={workload.id} example={workload.example} groups={workload.groups} date={summary.date}/>}
+  </section>;
+}

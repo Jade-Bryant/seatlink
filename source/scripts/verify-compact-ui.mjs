@@ -1,6 +1,8 @@
 import {chromium,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {DEMO_PROFILES} from '../src/recommendation-service.js';
+import {at} from '../src/engine.js';
+import {runReservationReplay} from '../experiments/reservation-replay.mjs';
 const url=process.env.SEATLINK_URL||'http://127.0.0.1:5175/';
 const browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{channel:'chrome'})});
 await mkdir('.qa',{recursive:true});
@@ -75,6 +77,27 @@ try{
  await expect(page.locator('.demo-booked')).toContainText('共 2 段，180 分钟');
  await page.getByRole('button',{name:'退出演示',exact:true}).click();
  expect(await page.evaluate(()=>localStorage.getItem('c200-reservation-simulator-v2'))).toBe(saved);
+ const replayDate='2026-01-01';
+ const replayStart=at(replayDate,9*3600);
+ const replayEnd=at(replayDate,11*3600);
+ const replay=runReservationReplay({
+  date:replayDate, seats:['A'], endedAfterBooked:0,
+  requests:[{id:1,readerId:'fixture',seatId:'A',submit:replayStart-3600,start:replayStart,end:replayEnd,release:replayEnd}],
+ });
+ await page.route('**/__seatlink/c200-replay',route=>route.fulfill({status:204}));
+ await page.getByRole('button',{name:'场景演示',exact:true}).click();
+ await page.getByRole('button',{name:'东区真实预约回放',exact:true}).click();
+ const replayInput=page.getByLabel('导入回放汇总');
+ const replayFile=data=>({name:'review.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});
+ const malformed={...replay,workloads:[{...replay.workloads[0],id:{}},replay.workloads[1]]};
+ await replayInput.setInputFiles(replayFile(malformed));
+ await expect(page.getByRole('alert')).toContainText('文件格式不匹配');
+ await replayInput.setInputFiles(replayFile(replay));
+ await expect(page.getByRole('table').getByRole('row')).toHaveCount(5);
+ await page.getByRole('button',{name:/增加需求/}).click();
+ await expect(page.getByText('共 2 条请求，其中 2 条有正有效时长。')).toBeVisible();
+ await expect(page.getByRole('slider',{name:'回放时段'})).toHaveAttribute('aria-valuetext','08:00–08:30');
+ expect(await page.evaluate(()=>localStorage.getItem('c200-reservation-simulator-v2'))).toBe(saved);
  await nav(page,'预约').click();
  await page.getByRole('button',{name:'模拟控制',exact:true}).click();await page.getByRole('button',{name:'入馆',exact:true}).click();await page.getByRole('button',{name:'关闭面板',exact:true}).click();
  await expect(page.locator('.booking-status')).toHaveText('已签到');
@@ -110,5 +133,5 @@ try{
   await mobile.locator('.school-profile-row').filter({hasText:'模拟数据'}).click();await expect(mobile.getByRole('dialog',{name:'模拟数据',exact:true})).toBeVisible();
   await mobile.close();
  }
- expect(errors).toEqual([]);console.log('PASS: school theme, map default, home/area navigation, profile, desktop, 375/390/844px, preferences, map/list, strict validation, booking, persistence, 4 demos, renewal, gate, date rollover.');
+ expect(errors).toEqual([]);console.log('PASS: school theme, map default, home/area navigation, profile, desktop, 375/390/844px, preferences, map/list, strict validation, booking, persistence, 4 demos, renewal, replay import, gate, date rollover.');
 }finally{await browser.close();}
