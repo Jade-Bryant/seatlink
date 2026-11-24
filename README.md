@@ -1,6 +1,8 @@
 # SeatLink · 学校样式与偏好找座
 
-此版本位于 **compact-preferences-ui** 独立分支；未合并 main，也未修改当前 GitHub Pages。
+此版本位于 **compact-preferences-ui** 分支，包含学校样式、偏好找座及 C200 东区预约回放。GitHub Pages 从此分支根目录发布，`main` 保留原基础版。
+
+**[打开最新版在线演示](https://xinranxu0830-boop.github.io/seatlink/)**。右上角「场景演示」可进入四个合成演示或「东区真实预约回放」。
 
 - 根目录：已构建的静态网页，可用任意静态服务器预览。
 - `source/`：React + Vite 源码、测试和模拟数据说明。
@@ -28,6 +30,6 @@ npm run build
 npm run test:ui
 ```
 
-详见 [源码 README](source/README.md)。后续修改源码后在 source/ 运行构建，产物在 source/dist/；更新本分支根目录产物即可。不要向 main 推送或改变 Pages 发布分支，除非另行确认要替换线上版本。
+详见 [源码 README](source/README.md)。后续修改源码后在 source/ 运行构建，产物在 source/dist/；更新本分支根目录产物即可发布。不要向 main 推送；后续改动建议先在新分支完成，再通过 PR 合并到本分支。
 
-当前在线页面仍来自 main，这个 GitHub 分支地址本身不是网页预览链接。
+GitHub 分支地址用于查看源码，在线演示请使用上方链接。真实数据、实验汇总和报告没有随网页公开发布；查看真实实验结果需在回放页面导入学长生成的 `c200-replay.json`。导入文件仅在当前浏览器中读取。

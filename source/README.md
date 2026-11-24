@@ -1,6 +1,6 @@
 # SeatLink · 学校样式与偏好找座
 
-独立分支 `compact-preferences-ui`。参考组员 V3 推荐规则，外观沿用学校预约系统的蓝色标题栏、浅蓝区域栏和黄绿座位图。**本分支没有合并到 main，也没有更改当前 GitHub Pages。**
+发布分支 `compact-preferences-ui`。参考组员 V3 推荐规则，外观沿用学校预约系统的蓝色标题栏、浅蓝区域栏和黄绿座位图。**[在线演示](https://xinranxu0830-boop.github.io/seatlink/)从本分支根目录发布；`main` 保留原基础版。**
 
 ## 本地运行
 
